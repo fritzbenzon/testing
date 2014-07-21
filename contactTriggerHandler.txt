@@ -1,0 +1,117 @@
+public class ContactTriggerHandler implements TriggerHandlerInterface{
+    
+    //Sets and Maps for collection of Account and Contact Ids and Address data.
+    
+    Set<Id> parentAccountIds = new Set<Id>();
+	Set<Id> acctIdsWithBillingCOntacts = new Set<Id>();
+	Map<Id, Account> accountsToUpdateMap = new Map<Id, Account>();
+    Map<Id, Address__c> addressMap;
+	Map<Id, Account> parentAccountMap;
+    
+    //Accounts and Address records that have contact related to it are put in sets.
+    //Query of Accounts with contacts assigned to them as their Billing Contact.
+    //Query of Address Unique ID and Record Type in Address Object.
+    //Query of Account with Airline Indicator field.
+    
+    public void bulkBefore() {
+        if(Trigger.isInsert || Trigger.isUpdate) {
+            Set<Id> addressIds = new Set<Id>();
+            for (sObject conObject : Trigger.new){
+                Contact con = (Contact) conObject;
+                parentAccountIds.add(con.AccountId);
+                addressIds.add(con.Address__c);
+            }  
+    
+            List<Contact> billingContacts = [SELECT ID, AccountId FROM CONTACT WHERE AccountId IN : parentAccountIds AND Billing_Indicator__c = true];
+            for(Contact con : billingContacts) {
+                acctIdsWithBillingCOntacts.add(con.AccountId);
+            }       
+            
+            addressMap = new Map<Id, Address__c>([SELECT Id, Address_Unique_Id__c, RecordType.Name FROM Address__c WHERE Id IN : addressIds]);
+            parentAccountMap = new Map<Id, Account>([SELECT Id, Airline_Indicator__c FROM Account WHERE Id IN : parentAccountIds]);
+        }
+    }
+        
+    public void bulkAfter() {
+        
+    }
+    
+    //Trigger before insert that checks if associated Account upon contact creation has already a Billing Contact,
+    //adds error if Account has already a billing contact.
+    //Populates the Address Unique Id field in Contact and Account with the value of the same field in the Adress Object.
+    //Checks if Record type of associated Address is 'Airline' and 'Airline Indicator' of associated Account is seet to true,
+    //if one of two conditions is false then trigger displays error. This is on contact creation.
+   
+    public void beforeInsert(SObject so) {
+        Contact con = (Contact) so;
+        if(acctIdsWithBillingCOntacts.contains(con.AccountId) && con.Billing_Indicator__c == TRUE) {
+            con.addError('Associated Account has already a billing contact. ' + 'One billing contact per account only.');
+        }
+        if(con.Address__c != null && addressMap.containsKey(con.Address__c)) {
+            con.Address_Unique_Id__c = addressMap.get(con.Address__c).Address_Unique_ID__c;
+        }
+        if(con.AccountId != null && addressMap.containsKey(con.Address__c)) {
+            if(!accountsToUpdateMap.containsKey(con.AccountId)) {
+                Account acc = new Account(Id = con.AccountId);
+                acc.Address_Unique_Id__c = addressMap.get(con.Address__c).Address_Unique_ID__c;
+                accountsToUpdateMap.put(con.AccountId, acc);
+            }
+        }		
+        if(addressMap.containsKey(con.Address__c ) && parentAccountMap.containsKey(con.AccountId)) {
+			if(addressMap.get(con.Address__c).RecordType.Name == 'Airline' && parentAccountMap.get(con.AccountId).Airline_Indicator__c == FALSE){
+				con.addError('Invalid Address Record Type for Airline Account');
+			}
+		}		
+    }
+ 
+    
+    //Trigger before update that checks if associated Account upon contact creation has already a Billing Contact,
+    //adds error if Account has already a billing contact.
+    //Populates the Address Unique Id field in Contact and Account with the value of the same field in the Adress Object.
+    //Checks if Record type of associated Address is 'Airline' and 'Airline Indicator' of associated Account is seet to true,
+    //if one of two conditions is false then trigger displays error. This is on contact creation.
+    
+    public void beforeUpdate(SObject oldSo, SObject so) {
+        Contact con = (Contact) so;
+        if(acctIdsWithBillingCOntacts.contains(con.AccountId) && con.Billing_Indicator__c == TRUE) {
+            con.addError('Associated Account has already a billing contact. ' + 'One billing contact per account only.');
+        }
+        if(con.Address__c != null && addressMap.containsKey(con.Address__c)) {
+            con.Address_Unique_Id__c = addressMap.get(con.Address__c).Address_Unique_ID__c;
+        }
+        if(con.AccountId != null && addressMap.containsKey(con.Address__c)) {
+            if(!accountsToUpdateMap.containsKey(con.AccountId)) {
+                Account acc = new Account(Id = con.AccountId);
+                acc.Address_Unique_Id__c = addressMap.get(con.Address__c).Address_Unique_ID__c;
+                accountsToUpdateMap.put(con.AccountId, acc);
+            }
+        }		
+        if(addressMap.containsKey(con.Address__c ) && parentAccountMap.containsKey(con.AccountId)) {
+			if(addressMap.get(con.Address__c).RecordType.Name == 'Airline' && parentAccountMap.get(con.AccountId).Airline_Indicator__c == FALSE){
+				con.addError('Invalid Address Record Type for Airline Account');
+			}
+		}		
+    }
+    
+	public void beforeDelete(SObject so) {
+               
+    }
+    
+	public void afterInsert(SObject so) {
+        
+    }
+
+	public void afterUpdate(SObject oldSo, SObject so) {
+        
+    }
+
+	public void afterDelete(SObject so) {
+        
+    }
+
+	public void andFinally() {
+        
+        update accountsToUpdateMap.values();
+        
+    }
+}
